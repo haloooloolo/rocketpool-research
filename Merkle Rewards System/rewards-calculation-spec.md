@@ -5,33 +5,29 @@ This document serves as a formal specification for the way that the rewards inte
 
 ## Version
 
-This describes **v8** of the rewards calculation ruleset.
+This describes **v10** of the rewards calculation ruleset.
 
-This version implements RPIP-30 following the suggestions [here](./misc/patches-rpip-30-suggestions.md)
+This version implements RPIP-[to be assigned]
 
 
-### Changes since `v7`
+### Changes since `v8`
 
-The following updates have been made from [v7](./legacy/rewards-calculation-spec-v7.md) of the spec.
+The following updates have been made from [v8](./legacy/rewards-calculation-spec-v8.md) of the spec. Note that v9 was just a file spec change, not a ruleset change, and is thus not included in this comparison.
 
 
 #### Major Updates
 
-- Following the Protocol DAO vote to approve RPIP-30, [Collateral Rewards](#collateral-rewards) rewards are now weighted on a curve, favoring 8 Ether Minipools and creating diminishing returns as additional RPL above the minimum is staked.
-  - This change is phased in linearly over 5 intervals, starting with interval 18, and will be fully effective in interval 23.
-- There is no longer a maximum node collateral.
-  - RocketDAOProtocolSettingsNode.getMaximumPerMinipoolStake() is no longer called and a constant of 150% is used instead when calculating the phase-in for RPIP-30.
+-  For minipools with less than 14% commission, increase the share of execution layer rewards based on RPL stake
+-  [TODO] For minipools with less than 14% commission, introduce a bonus based on RPL stake and the consensus rewards they earned
 
 
 #### Minor Changes
 
-- The Rewards File now includes a `totalNodeWeight` field which represents the sum of the rewards weighting.
-
 
 #### Clarifications
 
-- Disclaimers / Notes section has been updated to specify multiplication precedes division to preserve accuracy.
-- Attestation eligibility surrounding the Deneb hard fork was clearly defined.
+- fixed a typo in Calculating Attestation Performance and Minipool Scores
+
 
 ---
 
@@ -264,29 +260,23 @@ maxCollateral := eligibleBondedEth * maxCollateralFraction / ratio
 
 Note that `minCollateral` is based on the amount *borrowed*, and `maxCollateral` is based on the amount *bonded*.
 
-Now, calculate the node's effective RPL stake (`nodeEffectiveStake`) and weight (`nodeWeight`) based on the above:
+Now, calculate the node's weight (`nodeWeight`) based on the above:
 
 ```go
 nodeStake := RocketNodeStaking.getNodeRPLStake(nodeAddress)
 if nodeStake < minCollateral {
-    nodeEffectiveStake := 0
     nodeWeight := 0
 } else {
-    if nodeStake > maxCollateral {
-        nodeEffectiveStake := maxCollateral
-    } else {
-        nodeEffectiveStake := nodeStake
-    }
     nodeWeight := getNodeWeight(eligibleBorrowedEth, nodeStake, ratio)
 }
 ```
 
 `getNodeWeight()` is defined in the [getNodeWeight section](#getnodeweight).
 
-Next, scale the `nodeEffectiveStake` and `nodeWeight` by how long the node has been registered.
+Next, scale the `nodeWeight` by how long the node has been registered.
 This prorates RPL rewards for new nodes that haven't been active for a full rewards interval, so they only receive a corresponding fraction of the rewards based on how long they've been registered.
 
-For example, if the rewards period were 6300 Epochs (28 days) and a node registered 10 days ago, their `nodeEffectiveStake` and `nodeWeight` would be reduced to **35.7%** (10 / 28) of its true value.
+For example, if the rewards period were 6300 Epochs (28 days) and a node registered 10 days ago, their `nodeWeight` would be reduced to **35.7%** (10 / 28) of its true value.
 
 The node's registration time can be retrieved with the following contract method:
 
@@ -300,27 +290,19 @@ It should then be compared to `intervalTime` to determine the prorated effective
 ```go
 nodeAge := targetElBlock.Timestamp - registrationTime
 if (nodeAge < intervalTime) {
-    nodeEffectiveStake = nodeEffectiveStake * nodeAge / intervalTime
     nodeWeight = nodeWeight * nodeAge / intervalTime
 }
 ```
 
 Finally:
-- Sum each `nodeEffectiveStake` to retrieve the `totalEffectiveRplStake` across the entire network.
 - Sum each `nodeWeight` to retrieve the `totalNodeWeight` across the entire network.
 
-If the `totalEffectiveRplStake` or `totalNodeWeight` is `0` (i.e., *none* of the nodes are eligible for RPL rewards), add `collateralRewards` to `pDaoRewards`. Otherwise, if *any* node is eligible for rewards, perform the following steps instead.
+If the `totalNodeWeight` is `0` (i.e., *none* of the nodes are eligible for RPL rewards), add `collateralRewards` to `pDaoRewards`. Otherwise, if *any* node is eligible for rewards, perform the following steps instead.
 
-Now, calculate the the cycle factor, `C`, of RPIP-30's phase-in. Define C to be on the closed range `[1, 6]` and calculate it:
-
-```go
-C := min(6, interval - 18 + 1)
-```
-
-You can now calculate the **collateral RPL per node** from `nodeWeight`, `totalNodeWeight`, `nodeEffectiveStake`, `totalEffectiveRplStake`, `C`, and `collateralRewards`.
+Now, calculate the **collateral RPL per node** from `nodeWeight`, `totalNodeWeight`, and `collateralRewards`.
 
 ```go
-nodeCollateralAmount := (collateralRewards * C * nodeWeight / (totalNodeWeight * 6)) + (collateralRewards * (6 - C) * nodeEffectiveStake / (totalEffectiveRplStake * 6))
+nodeCollateralAmount := collateralRewards * nodeWeight / totalNodeWeight
 ```
 
 Sum the `nodeCollateralAmount` for each node to arrive at the `totalCalculatedCollateralRewards`.
@@ -575,7 +557,7 @@ statusTime := minipool.getStatusTime()
 
 For duties to be eligible for rewards inclusion, the minipool must be in the `staking` status at the time of the attestation duty assignment.
 You may use the state of the chain at the time of the duty assignment or any state after the duty assignment to assess this.
-This is used because `status` is one of the final states of a minipool (the other being `dissolved`, which is mutually exclusive with `staking`) and `statusTime` indicates the time at which the minipool entered `staking` status.
+This is used because `staking` is one of the final states of a minipool (the other being `dissolved`, which is mutually exclusive with `staking`) and `statusTime` indicates the time at which the minipool entered `staking` status.
 Thus, if a minipool's status is `staking`, it will always be `staking` and you can determine when it entered that state by using `statusTime`.
 
 *Note that the `finalized` flag is not a true state and does not overwrite `staking`; it is a separate boolean value.*
@@ -611,19 +593,23 @@ When a successful attestation is found, calculate the `minipoolScore` awarded to
     previousFee := RocketMinipoolBondReducer.getLastBondReductionPrevNodeFee(minipool.Address)
     lastReduceTime := RocketMinipoolBondReducer.getLastBondReductionTime(minipool.Address)
 
-    fee := currentFee
+    baseFee := currentFee
     bond := currentBond
     if lastReduceTime > 0 && lastReduceTime > blockTime {
-         // If this block occurred before the bond was reduced, use the old values
+        // If this block occurred before the bond was reduced, use the old values
         bond = previousBond
-        fee = previousFee
+        baseFee = previousFee
     }
     ```
-3. Calculate the `minipoolScore` using the minipool's bond amount and node fee:
+3. Get the parent's node `percentOfBorrowedETH` (see the  [getNodeWeight section](#getnodeweight)) and adjust the fee:
+    ```go
+    fee = max(baseFee, 1e17 + 4e15 * min(10e18, percentOfBorrowedETH))
+    ```
+4. Calculate the `minipoolScore` using the minipool's bond amount and node fee:
     ```go
     minipoolScore := (1e18 - fee) * bond / 32e18 + fee // The "ideal" fractional amount of ETH awarded to the NO for this attestation, out of 1
     ```
-4. Add `minipoolScore` to the minipool's running total, and the cumulative total for all minipools:
+5. Add `minipoolScore` to the minipool's running total, and the cumulative total for all minipools:
     ```go
     minipoolScores[minipool.Address] += minipoolScore
     totalMinipoolScore += minipoolScore
@@ -654,13 +640,55 @@ minipoolEth := totalNodeOpShare * minipoolScores[minipool.Address] / totalMinipo
 nodeEth[minipool.OwningNode] += minipoolEth
 totalEthForMinipools += minipoolEth
 ```
-where `nodeEth` is the true amount of ETH awarded to each node.
 
-Now, calculate the final "actual" pool staker balance (which will act as a buffer and capture any lost minipool ETH due to integer division):
+### Calculating Consensus Reward Bonuses
+First, define `totalConsensusBonus`, which will serve to store the cumulative total of the minipools' reward bonuses.
 ```go
-poolStakerEth := smoothingPoolBalance - totalEthForMinipools
+totalConsensusBonus := 0
+```
+For each minipool, define the time period for which the reward bonus is to be paid out.
+```go
+rewardStartTime = max(startTime, statusTime, optInTime)
+rewardStartBcSlot := math.Floor((rewardStartTime - genesisTime) / secondsPerSlot)
+rewardEndTime = min(endTime, optOutTime)
+rewardEndBcSlot := math.Floor((rewardEndTime - genesisTime) / secondsPerSlot)
+```
+For each slot within the interval, get the list of validator withdrawals (e.g. `eth/v2/beacon/blocks/<slotIndex>`). Note the `address` and `amount` for withdrawals that correspond to an eligible minipool and add them to the minipool's total. Withdrawals that occur before `rewardStartBcSlot` or after `rewardEndBcSlot` should be ignored.
+```go
+minipoolWithdrawals[address] += amount
+```
+Then, get `startBcBalance` and `endBcBalance` for each minipool by querying for beacon balances (e.g. `/eth/v1/beacon/states/<rewardStartBcSlot>/validator_balances` and `/eth/v1/beacon/states/<rewardEndBcSlot>/validator_balances`) and use them to calculate the minipool's eligible consensus income and corresponding bonus.
+```go
+bonusFee := fee - baseFee
+consensusIncome := max(0, endBcBalance - min(32e18, startBcBalance) + minipoolWithdrawals[minipool]
+bonusShare := (1e18 - bond / 32e18) * bonusFee
+miniPoolBonus := consensusIncome * bonusShare
+nodeBonus[minipool.OwningNode] += miniPoolBonus
+totalConsensusBonus += miniPoolBonus
+```
+Should the remaining balance not be sufficient to cover `totalConsensusBonus`, calculate a correction factor.
+```go
+remainingBalance := smoothingPoolBalance - totalEthForMinipool
+if totalConsensusBonus > remainingBalance {
+    correctionFactor := remainingBalance / totalConsensusBonus
+}
+```
+If necessary, adjust the reward bonus for every node as follows:
+```go
+totalConsensusBonus -= nodeBonus[node]
+nodeBonus[node] *= correctionFactor
+totalConsensusBonus += nodeBonus[node]
+```
+At last, add the reward bonus to the node's ETH claim:
+```go
+nodeEth[node] += nodeBonus[node]
 ```
 
+### Final Results
+Calculate the final "actual" pool staker balance (which will act as a buffer and capture any lost minipool ETH due to integer division):
+```go
+poolStakerEth := smoothingPoolBalance - totalEthForMinipools - totalConsensusBonus
+```
 
 ## Constructing the Tree
 

@@ -653,7 +653,7 @@ rewardStartBcSlot := math.Floor((rewardStartTime - genesisTime) / secondsPerSlot
 rewardEndTime = min(endTime, optOutTime)
 rewardEndBcSlot := math.Floor((rewardEndTime - genesisTime) / secondsPerSlot)
 ```
-For each slot within the interval, get the list of validator withdrawals (e.g. `eth/v2/beacon/blocks/<slotIndex>`). Note the `address` and `amount` for withdrawals that correspond to an eligible minipool and add them to the minipool's total. Withdrawals that occur before `rewardStartBcSlot` or after `rewardEndBcSlot` should be ignored.
+For each slot within the interval, get the list of validator withdrawals (e.g. `/eth/v2/beacon/blocks/<slotIndex>`). Note the `address` and `amount` for withdrawals that correspond to an eligible minipool and add them to the minipool's total. Withdrawals that occur before `rewardStartBcSlot` or after `rewardEndBcSlot` should be ignored.
 ```go
 minipoolWithdrawals[address] += amount
 ```

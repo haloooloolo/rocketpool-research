@@ -660,11 +660,11 @@ minipoolWithdrawals[address] += amount
 Then, get `startBcBalance` and `endBcBalance` for each minipool by querying for beacon balances (e.g. `/eth/v1/beacon/states/<rewardStartBcSlot>/validator_balances` and `/eth/v1/beacon/states/<rewardEndBcSlot>/validator_balances`) and use them to calculate the minipool's eligible consensus income and corresponding bonus.
 ```go
 bonusFee := fee - baseFee
-consensusIncome := max(0, endBcBalance - min(32e18, startBcBalance) + minipoolWithdrawals[minipool]
+consensusIncome := max(0, endBcBalance - min(32e18, startBcBalance) + minipoolWithdrawals[minipool.Address]
 bonusShare := (1e18 - bond / 32e18) * bonusFee
-miniPoolBonus := consensusIncome * bonusShare
-nodeBonus[minipool.OwningNode] += miniPoolBonus
-totalConsensusBonus += miniPoolBonus
+minipoolBonus := consensusIncome * bonusShare
+nodeBonus[minipool.OwningNode] += minipoolBonus
+totalConsensusBonus += minipoolBonus
 ```
 Should the remaining balance not be sufficient to cover `totalConsensusBonus`, calculate a correction factor.
 ```go

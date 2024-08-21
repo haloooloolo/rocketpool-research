@@ -16,13 +16,11 @@ The following updates have been made from [v8](./legacy/rewards-calculation-spec
 
 
 #### Major Updates
-
--  For minipools with less than 14% commission, increase the share of execution layer rewards based on RPL stake
--  [TODO] For minipools with less than 14% commission, introduce a bonus based on RPL stake and the consensus rewards they earned
-
+- Remove the now-obsolete RPIP-30 cycle factor and associated legacy reward calculation
+- For minipools with less than 14% commission, increase the share of execution layer rewards based on RPL stake
+- For minipools with less than 14% commission, introduce a bonus based on RPL stake and the consensus rewards they earned
 
 #### Minor Changes
-
 
 #### Clarifications
 

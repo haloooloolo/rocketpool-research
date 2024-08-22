@@ -640,7 +640,9 @@ totalEthForMinipools += minipoolEth
 ```
 
 ### Calculating Consensus Reward Bonuses
-First, define `totalConsensusBonus`, which will serve to store the cumulative total of the minipools' reward bonuses.
+If megapools are available, skip this section and award no consensus rewards bonus.
+
+Otherwise, define `totalConsensusBonus`, which will serve to store the cumulative total of the minipools' reward bonuses.
 ```go
 totalConsensusBonus := 0
 ```
@@ -658,7 +660,7 @@ minipoolWithdrawals[address] += amount
 Then, get `startBcBalance` and `endBcBalance` for each minipool by querying for validator balances at `rewardStartBcSlot` and `rewardEndBcSlot`, respectively (e.g. `/eth/v1/beacon/states/<slotIndex>/validator_balances`). Use them to calculate the minipool's eligible consensus income and corresponding bonus.
 ```go
 bonusFee := fee - baseFee
-consensusIncome := max(0, endBcBalance + minipoolWithdrawals[minipool.Address] - min(32e18, startBcBalance))
+consensusIncome := max(0, endBcBalance + minipoolWithdrawals[minipool.Address] - max(32e18, startBcBalance))
 bonusShare := (1e18 - bond / 32e18) * bonusFee
 minipoolBonus := consensusIncome * bonusShare
 nodeBonus[minipool.OwningNode] += minipoolBonus

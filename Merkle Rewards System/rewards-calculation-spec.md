@@ -593,7 +593,7 @@ When a successful attestation is found, calculate the `minipoolScore` awarded to
 
     baseFee := currentFee
     bond := currentBond
-    if lastReduceTime > 0 && lastReduceTime > blockTime {
+    if lastReduceTime > blockTime {
         // If this block occurred before the bond was reduced, use the old values
         bond = previousBond
         baseFee = previousFee
@@ -658,7 +658,7 @@ minipoolWithdrawals[address] += amount
 Then, get `startBcBalance` and `endBcBalance` for each minipool by querying for beacon balances (e.g. `/eth/v1/beacon/states/<rewardStartBcSlot>/validator_balances` and `/eth/v1/beacon/states/<rewardEndBcSlot>/validator_balances`) and use them to calculate the minipool's eligible consensus income and corresponding bonus.
 ```go
 bonusFee := fee - baseFee
-consensusIncome := max(0, endBcBalance - min(32e18, startBcBalance) + minipoolWithdrawals[minipool.Address]
+consensusIncome := max(0, endBcBalance + minipoolWithdrawals[minipool.Address] - min(32e18, startBcBalance))
 bonusShare := (1e18 - bond / 32e18) * bonusFee
 minipoolBonus := consensusIncome * bonusShare
 nodeBonus[minipool.OwningNode] += minipoolBonus

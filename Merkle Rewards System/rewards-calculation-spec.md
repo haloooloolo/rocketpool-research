@@ -16,7 +16,7 @@ The following updates have been made from [v8](./legacy/rewards-calculation-spec
 
 
 #### Major Updates
-- Remove the now-obsolete RPIP-30 cycle factor and associated legacy reward calculation
+- The now-obsolete RPIP-30 cycle factor and associated legacy reward calculation is removed
 - For minipools with less than 14% commission, increase the share of execution layer rewards based on RPL stake
 - For minipools with less than 14% commission, introduce a bonus based on RPL stake and the consensus rewards they earned
 
@@ -664,28 +664,26 @@ minipoolBonus := consensusIncome * bonusShare
 nodeBonus[minipool.OwningNode] += minipoolBonus
 totalConsensusBonus += minipoolBonus
 ```
-Should the remaining balance not be sufficient to cover `totalConsensusBonus`, calculate a correction factor.
+Should the remaining balance not be sufficient to cover `totalConsensusBonus`, calculate a correction factor and apply it to every node.
 ```go
 remainingBalance := smoothingPoolBalance - totalEthForMinipool
 if totalConsensusBonus > remainingBalance {
     correctionFactor := remainingBalance / totalConsensusBonus
 }
 ```
-If necessary, adjust the reward bonus for every node as follows:
 ```go
-totalConsensusBonus -= nodeBonus[node]
 nodeBonus[node] *= correctionFactor
-totalConsensusBonus += nodeBonus[node]
 ```
-At last, add the reward bonus to the node's ETH claim:
+At last, add the reward bonus to the node's ETH claim and add `totalConsensusBonus` to the total claim tally:
 ```go
 nodeEth[node] += nodeBonus[node]
+totalEthForMinipools += nodeBonus[node]
 ```
 
 ### Final Results
 Calculate the final "actual" pool staker balance (which will act as a buffer and capture any lost minipool ETH due to integer division):
 ```go
-poolStakerEth := smoothingPoolBalance - totalEthForMinipools - totalConsensusBonus
+poolStakerEth := smoothingPoolBalance - totalEthForMinipools
 ```
 
 ## Constructing the Tree
